@@ -5,4 +5,9 @@ Of course you can try to appraoch this by NLP method, like ner, crf... If you ge
 mail: 547721604@qq.com
 
 my python script is just a rule-based approach to get the quatraples, there may be a lot of situations that are not considered, 
-please comment on the project ao I can know and fix the potencial bugs, Thanks.
+please comment on the project so I can know and fix the potencial bugs, Thanks.
+
+
+How to use the code?
+use function dragout, the input parameters is the output result of function sep_flag_pre,
+function sep_flag_pre needs just a sentence as the original input
