@@ -36,6 +36,9 @@ def sep_flag_pre(sentence:str):
 				s_p[mi] = s_p[mi].replace(single_value, '为'+single_value)
 				
 	sentence = '，'.join(s_p)
+	
+	# 去除干扰模式的单位
+	sentence = sentence.replace('次/年','')
 	# get pos tags out of sub sentences
 	parse_words=[]
 	parse_wordsequences=[]
@@ -736,7 +739,7 @@ def dragout(flags, words, sentence):
 				gearup(flags, words, values, flags_plain, quadraples, index_block, value_block, numerator, True, denominator)
 				
 			
-			if match_pattern_index_set=={0,6,7}: # 规则二：“多值特征”
+			if match_pattern_index_set=={0,6,7} or match_pattern_index_set=={0,6}: # 规则二：“多值特征”
 				print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 击中正则 pat_multi_value（多值） -> {match_patterns_dict[0]}')
 				print(f'[method:dragout]----并列多值为: {value_block}')
 				# 确认主语
@@ -746,7 +749,7 @@ def dragout(flags, words, sentence):
 				
 				gearup(flags, words, values, flags_plain, quadraples, index_block, value_block, name, False)
 				
-			if match_pattern_index_set=={1,6}: # 规则三：“多比例特征”
+			if match_pattern_index_set=={1, 6}: # 规则三：“多比例特征”
 				print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 击中正则 pat_multi_value（多比例） -> {match_patterns_dict[1]}')
 				print(f'[method:dragout]----并列多百分比为: {value_block}')
 				target_block, (name_start_index, name_end_index) = locate_subjectindex_general(words, flags, index_block)
