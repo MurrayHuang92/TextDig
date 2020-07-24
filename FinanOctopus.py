@@ -746,7 +746,7 @@ def dragout(flags, words, sentence):
 				
 				gearup(flags, words, values, flags_plain, quadraples, index_block, value_block, name, False)
 				
-			if match_pattern_index_set=={1}: # 规则三：“多比例特征”
+			if match_pattern_index_set=={1,6}: # 规则三：“多比例特征”
 				print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 击中正则 pat_multi_value（多比例） -> {match_patterns_dict[1]}')
 				print(f'[method:dragout]----并列多百分比为: {value_block}')
 				target_block, (name_start_index, name_end_index) = locate_subjectindex_general(words, flags, index_block)
