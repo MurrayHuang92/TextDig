@@ -70,14 +70,22 @@ def sep_flag_pre(sentence:str):
 	ms = [re.findall(pat_value_word, p) for p in s_p]
 	for mi in range(len(ms)):
 		if ms[mi]!=[]:
+			last_index = 0 # last_index的作用是保证index是按递增查找的
 			for value_tuple in ms[mi]:
 				single_value = value_tuple[0]
-				value_index = s_p[mi].index(single_value)
+				value_index = s_p[mi].index(single_value)# 这种处理是不可靠的
+				while value_index < last_index:
+					value_index = last_index + s_p[mi][last_index:].index(single_value)
+				last_index = value_index	
 				post_value_index = clean_subject(s_p[mi]).index(single_value)
 				word_before_value = s_p[mi][value_index-1]
+				# 占比特征句式没有“的”
+				if (s_p[mi][0] == '占' or s_p[mi].count('占') != 0) and (s_p[mi].count('比重') != 0 or s_p[mi].count('比例') != 0) and s_p[mi].count('的') == 0:
+					print(f'[method:sep_flag_pre]已为占比句式[{s_p[mi]}]完善占比形式1')
+					s_p[mi] = s_p[mi].replace('比重', '的比重').replace('比例', '的比例')
 				# 占比类句式无“比重”/“比例” 无法形成占比特征的匹配
 				if (s_p[mi][0] == '占' or s_p[mi].count('占') != 0) and (s_p[mi].count('比重') == 0 and s_p[mi].count('比例') == 0):
-					print(f'[method:sep_flag_pre]已为占比句式[{s_p[mi]}]完善占比形式')
+					print(f'[method:sep_flag_pre]已为占比句式[{s_p[mi]}]完善占比形式2')
 					s_p[mi] = s_p[mi].replace(single_value, '的比例为'+single_value)
 					s_p[mi] = s_p[mi].replace('的的','的')
 					continue
@@ -131,7 +139,7 @@ pat_multi_subject_value = re.compile('(([lvnthujxdrm]*p?mmx)*[lvnthujxdrm]*p?mmc
 
 # 是否需要加入dp后缀，待后设计决定
 # 占比句子特征：*占*的比重
-pat_take_percentage = re.compile('(v[lvnthujxdrm]*ujn)')
+pat_take_percentage = re.compile('(v[blvnthujxdrm]*ujn)')
 
 # 假设：值都是有小数点的，此正则针对的是词
 pat_value_word = re.compile('(-?\d+\.\d{1,3}%?(万元)?(亿元)?(元)?(万股)?(股)?)')
@@ -472,14 +480,21 @@ def find_time_regx(values, flags_plain, index_block, pat_time, pat_type):
 					try:
 						print(f'[method:find_time_regx]----当前time_regx_list[{irl}]是{time_regx_list[irl]}')
 						if type(time_regx_list[irl]) == list:
+							time_regx_list[irl].reverse()
 							time_regx_list[irl].remove(r)
+							time_regx_list[irl].reverse()
 						else:
 							if time_regx_list[irl]==r:
 								time_regx_list[irl] = None
 					except:
 						print(f'[method:find_time_regx]-----{r} 不在')
 						if r == 'mx':
+							time_regx_list[irl].reverse()
 							time_regx_list[irl].remove('m')
+							time_regx_list[irl].reverse()
+						if r == 'm': # m容易被大正则合并
+							time_regx_list[irl]=[]
+							break
 				if time_regx_list[irl] == []:
 					time_regx_list[irl] = None
 				if time_regx_list[irl] != None and len(time_regx_list[irl])==1:
@@ -531,6 +546,8 @@ def clean_subject(subjectname):
 			subjectname = subjectname[2:]
 		if subjectname[0:2]=='本期':
 			subjectname = subjectname[2:]
+		if subjectname[0:2]=='分别':
+			return clean_subject(subjectname[2:])
 		if subjectname[0:2]=='其中':
 			return clean_subject(subjectname[2:])
 		if subjectname[0:2]=='主要':
@@ -697,7 +714,7 @@ def gearup(flags, words, values, flags_plain, quadraples, index_block, value_blo
 				time_string = from_index_to_span(words, target_indexblock, locate_itemindex_general(flags, target_indexblock, time_regx))
 				if time_string == None:
 					return
-				while time_string == '一年内' and target_indexblock >= 0:
+				while time_string in ('一年内','少数股东权益') and target_indexblock >= 0:
 					print(f'[method:gearup]----跳过具体时间{time_string}（主语成分）')
 					time_regx, target_indexblock = find_time_regx(values, flags_plain, target_indexblock-1, pat_uncover_time, False)
 					time_string = from_index_to_span(words, target_indexblock, locate_itemindex_general(flags, target_indexblock, time_regx))
@@ -706,8 +723,8 @@ def gearup(flags, words, values, flags_plain, quadraples, index_block, value_blo
 				if type(time_string) == list and len(time_string) == 2:
 					print('[method:gearup]-----该句为变动2类的补充句式')
 					quadraple_dict={}
-					quadraple_dict['item'] = quadraples[-1]['item']+' 的 '+subjectname
-					quadraple_dict['time'] = quadraples[-2]['time'] +' 至 '+ quadraples[-1]['time']
+					quadraple_dict['item'] = quadraples[-1]['item'].split(' ')[0] + ' 的 ' + subjectname
+					quadraple_dict['time'] = quadraples[-1]['time']
 					quadraple_dict['value'] = value_block
 					quadraples.append(quadraple_dict)
 				
@@ -723,7 +740,7 @@ def gearup(flags, words, values, flags_plain, quadraples, index_block, value_blo
 								else:
 									each_previous_subjectname = quadraples[::-1][qi-1]['item']
 								
-								while each_previous_subjectname.count(time_string) != 0 and each_previous_subjectname.index(time_string) > 0 or time_string=='一年内':
+								while each_previous_subjectname.count(time_string) != 0 and each_previous_subjectname.index(time_string) > 0 or time_string in ('一年内','少数股东权益'):
 									print(f'[method:gearup]-----{time_string}在主语中需跳过')
 									index_block = index_block - 1 
 									time_regx, target_indexblock = find_time_regx(values, flags_plain, index_block, pat_uncover_time, False)
@@ -768,6 +785,10 @@ def gearup(flags, words, values, flags_plain, quadraples, index_block, value_blo
 						print(f'[method:gearup]----模糊识别有误，转为识别具体时间，默认为多时间')
 						time_regx, target_indexblock = find_time_regx(values, flags_plain, index_block, pat_uncover_time, False)
 						time_string = from_index_to_span(words, target_indexblock, locate_itemindex_general(flags, target_indexblock, time_regx))
+						while time_string in ('一年内','少数股东权益') and target_indexblock >= 0:
+							print(f'[method:gearup]----跳过具体时间{time_string}（主语成分）')
+							time_regx, target_indexblock = find_time_regx(values, flags_plain, target_indexblock-1, pat_uncover_time, False)
+							time_string = from_index_to_span(words, target_indexblock, locate_itemindex_general(flags, target_indexblock, time_regx))
 						print(f'[method:gearup]----多时间确认为{time_string}')
 						if type(time_string) == list and len(time_string) != len(value_block):
 							time_string = ' - '.join(time_string) # 先当作模糊时间黏合在一起，因为不能按和值域相同的个数对应
@@ -823,7 +844,7 @@ def gearup(flags, words, values, flags_plain, quadraples, index_block, value_blo
 								return
 						# 这里我再次假设出来的时间是单时间
 						print(f'[method:gearup]-----单主语单值域对应单个具体时间再次确认为: {time_string}')
-						while time_string == '一年内' and target_indexblock >= 0:
+						while time_string in ('一年内','少数股东权益') and target_indexblock >= 0:
 							print(f'[method:gearup]----跳过具体时间{time_string}（主语成分）')
 							time_regx, target_indexblock = find_time_regx(values, flags_plain, target_indexblock-1, pat_uncover_time, False)
 							time_string = from_index_to_span(words, target_indexblock, locate_itemindex_general(flags, target_indexblock, time_regx))
