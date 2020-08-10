@@ -55,12 +55,17 @@ def sep_flag_pre(sentence:str):
 	# 把不能识别为数值的数值转化为能识别的数值
 	number_matches = re.findall(re.compile('(-?\d+(%|万元|亿元|元|万股|股))'), sentence)
 	while len(number_matches) != 0:
+		last_index = 0
 		for number_match in number_matches:
 			number_plus_unit = number_match[0]
 			numberunitindex = sentence.index(number_plus_unit)
+			while numberunitindex < last_index:
+				numberunitindex = last_index + sentence[last_index:].index(number_plus_unit)
+			last_index = numberunitindex
 			if sentence[numberunitindex-1] != '.':
 				print(f'[method:sep_flag_pre]数值{number_plus_unit}需转化为可识别数值')
-				sentence = sentence.replace(number_plus_unit, number_plus_unit.replace(number_match[1],'')+'.00'+number_match[1])
+				# sentence = sentence.replace(number_plus_unit, number_plus_unit.replace(number_match[1],'')+'.00'+number_match[1])
+				sentence = sentence[:numberunitindex] + number_plus_unit.replace(number_match[1],'')+'.00'+number_match[1] + sentence[numberunitindex+len(number_plus_unit):]
 				number_matches = re.findall(re.compile('(-?\d+(%|万元|亿元|元|万股|股))'), sentence)
 				break
 			number_matches.remove(number_match)
@@ -90,7 +95,7 @@ def sep_flag_pre(sentence:str):
 					s_p[mi] = s_p[mi].replace('的的','的')
 					continue
 					
-				if word_before_value not in ['为','、','和','的'] and post_value_index!=0:
+				if word_before_value not in ['为','、','和','的','以及','及'] and post_value_index!=0:
 					print(f'[method:sep_flag_pre]已为无谓语句式[{s_p[mi]}]添加谓词前置')
 					s_p[mi] = s_p[mi].replace(single_value, '为'+single_value)
 			
@@ -145,7 +150,7 @@ pat_take_percentage = re.compile('(v[blvnthujxdrm]*ujn)')
 pat_value_word = re.compile('(-?\d+\.\d{1,3}%?(万元)?(亿元)?(元)?(万股)?(股)?)')
 
 # 需要转义时间句子特征
-cover_time_sample_flags=['lcmt','lcd','fmcmt','fmcd','tcd','tcmt','fmt','fm','nrt','t']
+cover_time_sample_flags=['lcmt','lcd','fmcmt','fmcd','tcd','tcmt','fmt','fm','nrt','nf','t']
 cover_time_regx='|'.join(cover_time_sample_flags)
 pat_cover_time = re.compile(cover_time_regx) # 对应关系后续针对性解析
 # 不需转义时间句子特征
@@ -578,6 +583,15 @@ def clean_subject(subjectname):
 	
 	return subjectname
 
+# 判断当前所获得时间是否需要继续前跳
+def is_nonetime(time_string):
+	contain_time_item_pool = ['一年内','少数股东权益']
+	if type(time_string) == list:
+		return False 
+	if time_string.isdigit():
+		return len(time_string) != 4 or time_string[:2] not in ('19','20')
+	return time_string in contain_time_item_pool
+
 # 模式找寻
 # 公式一-占比类： 占x的比重是目前唯一出现需要判断公式的地方
 # 公式二-变动类： 日期1科目x较日期2增加/减少数值/比例
@@ -714,7 +728,7 @@ def gearup(flags, words, values, flags_plain, quadraples, index_block, value_blo
 				time_string = from_index_to_span(words, target_indexblock, locate_itemindex_general(flags, target_indexblock, time_regx))
 				if time_string == None:
 					return
-				while time_string in ('一年内','少数股东权益') and target_indexblock >= 0:
+				while is_nonetime(time_string) and target_indexblock >= 0:
 					print(f'[method:gearup]----跳过具体时间{time_string}（主语成分）')
 					time_regx, target_indexblock = find_time_regx(values, flags_plain, target_indexblock-1, pat_uncover_time, False)
 					time_string = from_index_to_span(words, target_indexblock, locate_itemindex_general(flags, target_indexblock, time_regx))
@@ -740,7 +754,7 @@ def gearup(flags, words, values, flags_plain, quadraples, index_block, value_blo
 								else:
 									each_previous_subjectname = quadraples[::-1][qi-1]['item']
 								
-								while each_previous_subjectname.count(time_string) != 0 and each_previous_subjectname.index(time_string) > 0 or time_string in ('一年内','少数股东权益'):
+								while each_previous_subjectname.count(time_string) != 0 and each_previous_subjectname.index(time_string) > 0 or is_nonetime(time_string):
 									print(f'[method:gearup]-----{time_string}在主语中需跳过')
 									index_block = index_block - 1 
 									time_regx, target_indexblock = find_time_regx(values, flags_plain, index_block, pat_uncover_time, False)
@@ -785,7 +799,7 @@ def gearup(flags, words, values, flags_plain, quadraples, index_block, value_blo
 						print(f'[method:gearup]----模糊识别有误，转为识别具体时间，默认为多时间')
 						time_regx, target_indexblock = find_time_regx(values, flags_plain, index_block, pat_uncover_time, False)
 						time_string = from_index_to_span(words, target_indexblock, locate_itemindex_general(flags, target_indexblock, time_regx))
-						while time_string in ('一年内','少数股东权益') and target_indexblock >= 0:
+						while is_nonetime(time_string) and target_indexblock >= 0:
 							print(f'[method:gearup]----跳过具体时间{time_string}（主语成分）')
 							time_regx, target_indexblock = find_time_regx(values, flags_plain, target_indexblock-1, pat_uncover_time, False)
 							time_string = from_index_to_span(words, target_indexblock, locate_itemindex_general(flags, target_indexblock, time_regx))
@@ -844,7 +858,7 @@ def gearup(flags, words, values, flags_plain, quadraples, index_block, value_blo
 								return
 						# 这里我再次假设出来的时间是单时间
 						print(f'[method:gearup]-----单主语单值域对应单个具体时间再次确认为: {time_string}')
-						while time_string in ('一年内','少数股东权益') and target_indexblock >= 0:
+						while is_nonetime(time_string) and target_indexblock >= 0:
 							print(f'[method:gearup]----跳过具体时间{time_string}（主语成分）')
 							time_regx, target_indexblock = find_time_regx(values, flags_plain, target_indexblock-1, pat_uncover_time, False)
 							time_string = from_index_to_span(words, target_indexblock, locate_itemindex_general(flags, target_indexblock, time_regx))
@@ -887,33 +901,16 @@ def dragout(flags, words, sentence):
 	for index_block, value_block in enumerate(values):
 		# 分子句值集合
 		if value_block != None:
-			# 寻找对应模式
-			match_patterns = [(index_pat, mp) for index_pat, mp in enumerate(pattern_matrix[:,index_block].transpose().getA()[0].tolist()) if mp != None]
-			match_patterns_dict = dict(match_patterns)
-			match_pattern_index_set = set(match_patterns_dict.keys()) # 模式的判断依据
-			
-			print(f'[method:dragout]---match_pattern_index_set: {match_pattern_index_set}')
-			
-			if  match_pattern_index_set=={1,5,6,7}:# 规则一：“占比特征”与“多比例特征”在同一子句中,被认定为同一组合
-				print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 击中正则 pat_multi_rate（多比例） -> {match_patterns_dict[1]} 和 pat_take_percentage（占比） -> {match_patterns_dict[5]}')
-				print(f'[method:dragout]----占比公式值为: {value_block}')
-				# 得出具体情况下的占比特征的flags
-				perctg_regx = match_patterns_dict[5]
-				# 确认分母
-				take_percentage_start_index, take_percentage_end_index = locate_itemindex_in_take_percentage(flags, index_block, perctg_regx)
-				denominator = from_index_to_span(words, index_block, (take_percentage_start_index, take_percentage_end_index))
-				print(f'[method:dragout]----占比公式分母为: {denominator}')
+			try:
+				# 寻找对应模式
+				match_patterns = [(index_pat, mp) for index_pat, mp in enumerate(pattern_matrix[:,index_block].transpose().getA()[0].tolist()) if mp != None]
+				match_patterns_dict = dict(match_patterns)
+				match_pattern_index_set = set(match_patterns_dict.keys()) # 模式的判断依据
 				
-				# 确认分子/主语 可能跳句
-				target_block, numerator_index = locate_numeratorindex_in_take_percentage(words, flags, index_block, take_percentage_start_index)
-				numerator = from_index_to_span(words, target_block, numerator_index)
-				print(f'[method:dragout]----占比公式分子为: {numerator}')
+				print(f'[method:dragout]---match_pattern_index_set: {match_pattern_index_set}')
 				
-				gearup(flags, words, values, flags_plain, quadraples, index_block, value_block, numerator, True, denominator)
-			
-			if match_pattern_index_set=={1,5,6} or match_pattern_index_set=={5,6}:
-				if '占' in sentence.split("，")[index_block]:# 再次确认
-					print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 击中正则 pat_take_percentage（占比） -> {match_patterns_dict[5]}')
+				if  match_pattern_index_set=={1,5,6,7}:# 规则一：“占比特征”与“多比例特征”在同一子句中,被认定为同一组合
+					print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 击中正则 pat_multi_rate（多比例） -> {match_patterns_dict[1]} 和 pat_take_percentage（占比） -> {match_patterns_dict[5]}')
 					print(f'[method:dragout]----占比公式值为: {value_block}')
 					# 得出具体情况下的占比特征的flags
 					perctg_regx = match_patterns_dict[5]
@@ -929,107 +926,139 @@ def dragout(flags, words, sentence):
 					
 					gearup(flags, words, values, flags_plain, quadraples, index_block, value_block, numerator, True, denominator)
 				
-				else:# 误判
-					print(f'[method:dragout]----误判为占比类型，流转为单值赋值模式')
-					match_pattern_index_set={6}
+				if match_pattern_index_set=={1,5,6} or match_pattern_index_set=={5,6}:
+					if '占' in sentence.split("，")[index_block]:# 再次确认
+						print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 击中正则 pat_take_percentage（占比） -> {match_patterns_dict[5]}')
+						print(f'[method:dragout]----占比公式值为: {value_block}')
+						# 得出具体情况下的占比特征的flags
+						perctg_regx = match_patterns_dict[5]
+						# 确认分母
+						take_percentage_start_index, take_percentage_end_index = locate_itemindex_in_take_percentage(flags, index_block, perctg_regx)
+						denominator = from_index_to_span(words, index_block, (take_percentage_start_index, take_percentage_end_index))
+						print(f'[method:dragout]----占比公式分母为: {denominator}')
+						
+						# 确认分子/主语 可能跳句
+						target_block, numerator_index = locate_numeratorindex_in_take_percentage(words, flags, index_block, take_percentage_start_index)
+						numerator = from_index_to_span(words, target_block, numerator_index)
+						print(f'[method:dragout]----占比公式分子为: {numerator}')
+						
+						gearup(flags, words, values, flags_plain, quadraples, index_block, value_block, numerator, True, denominator)
+					
+					else:# 误判
+						print(f'[method:dragout]----误判为占比类型，流转为单值赋值模式')
+						match_pattern_index_set={6}
+					
+					
 				
-				
-			
-			if match_pattern_index_set=={0,6,7} or match_pattern_index_set=={0,6}: # 规则二：“多值特征”
-				print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 击中正则 pat_multi_value（多值） -> {match_patterns_dict[0]}')
-				print(f'[method:dragout]----并列多值为: {value_block}')
-				# 确认主语
-				target_block, (name_start_index, name_end_index) = locate_subjectindex_general(words, flags, index_block)
-				name = from_index_to_span(words, target_block, (name_start_index, name_end_index))
-				print(f'[method:dragout]----分句主语为: {name}')
-				
-				gearup(flags, words, values, flags_plain, quadraples, index_block, value_block, name, False)
-				
-			if match_pattern_index_set=={1, 6}: # 规则三：“多比例特征”
-				print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 击中正则 pat_multi_value（多比例） -> {match_patterns_dict[1]}')
-				print(f'[method:dragout]----并列多百分比为: {value_block}')
-				target_block, (name_start_index, name_end_index) = locate_subjectindex_general(words, flags, index_block)
-				name = from_index_to_span(words, target_block, (name_start_index, name_end_index))
-				print(f'[method:dragout]----分句主语为: {name}')
-				
-				gearup(flags, words, values, flags_plain, quadraples, index_block, value_block, name, False)
-				
-			if match_pattern_index_set=={2, 6} or match_pattern_index_set=={4, 6}: # 规则四： “值/比例变动特征” # 可能会在后续的子句中有变动的百分比
-				print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 击中正则 pat_change_value1/rate（值变动1/比例变动） -> {match_patterns_dict}')
-				print(f'[method:dragout]----变动值为: {value_block}')
-				target_block, (name_start_index, name_end_index) = locate_subjectindex_general(words, flags, index_block)
-				name = from_index_to_span(words, target_block, (name_start_index, name_end_index))
-				print(f'[method:dragout]----分句主语为: {name}')
-				
-				gearup(flags, words, values, flags_plain, quadraples, index_block, value_block, name, True, name)
-				
-			if match_pattern_index_set=={3}: # 规则五：“值变动+值赋值（变动类的第二种）”
-				print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 击中正则 pat_change_value2（值变动2） -> {match_patterns_dict[3]}')
-				print(f'[method:dragout]----变动值为: {value_block}')
-				target_block, (name_start_index, name_end_index) = locate_subjectindex_general(words, flags, index_block)
-				name = from_index_to_span(words, target_block, (name_start_index, name_end_index))
-				print(f'[method:dragout]----分句主语为: {name}')
-                
-				gearup(flags, words, values, flags_plain, quadraples, index_block, value_block, name, True, name)
-				
-			if match_pattern_index_set=={6}: # 规则六：单值赋值
-				print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 击中正则 pat_single_value（单值） -> {match_patterns_dict[6]}')
-				print(f'[method:dragout]----单值为: {value_block}')
-				target_block, (name_start_index, name_end_index) = locate_subjectindex_general(words, flags, index_block)
-				name = from_index_to_span(words, target_block, (name_start_index, name_end_index))
-				print(f'[method:dragout]----单值主语为: {name}')
-				if sentence.split("，")[index_block].count('、') != 0:
-					print(f'[method:dragout]-----主语含有、号又未被多值特征击中，说明为枚举键值对')
+				if match_pattern_index_set=={0,6,7} or match_pattern_index_set=={0,6}: # 规则二：“多值特征”
+					print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 击中正则 pat_multi_value（多值） -> {match_patterns_dict[0]}')
+					print(f'[method:dragout]----并列多值为: {value_block}')
+					# 确认主语
+					target_block, (name_start_index, name_end_index) = locate_subjectindex_general(words, flags, index_block)
+					name = from_index_to_span(words, target_block, (name_start_index, name_end_index))
+					print(f'[method:dragout]----分句主语为: {name}')
+					if name.count('、') != 0:
+						print(f'[method:dragout]-----主语含有、号又且被多值特征击中，说明为多主语并列')
+						names = name.split('、')
+						if '以及' in names[-1]:
+							lat = names[-1].split('以及',1)
+						elif '及' in names[-1]:
+							lat = names[-1].split('及',1)
+						elif '和' in names[-1]:
+							lat = names[-1].split('和',1)
+						names.pop(-1)
+						names.extend(lat)
+						gearup(flags, words, values, flags_plain, quadraples, index_block, value_block, names, False)
+					else:
+						gearup(flags, words, values, flags_plain, quadraples, index_block, value_block, name, False)
+					
+				if match_pattern_index_set=={1, 6}: # 规则三：“多比例特征”
+					print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 击中正则 pat_multi_value（多比例） -> {match_patterns_dict[1]}')
+					print(f'[method:dragout]----并列多百分比为: {value_block}')
+					target_block, (name_start_index, name_end_index) = locate_subjectindex_general(words, flags, index_block)
+					name = from_index_to_span(words, target_block, (name_start_index, name_end_index))
+					print(f'[method:dragout]----分句主语为: {name}')
+					
+					gearup(flags, words, values, flags_plain, quadraples, index_block, value_block, name, False)
+					
+				if match_pattern_index_set=={2, 6} or match_pattern_index_set=={4, 6}: # 规则四： “值/比例变动特征” # 可能会在后续的子句中有变动的百分比
+					print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 击中正则 pat_change_value1/rate（值变动1/比例变动） -> {match_patterns_dict}')
+					print(f'[method:dragout]----变动值为: {value_block}')
+					target_block, (name_start_index, name_end_index) = locate_subjectindex_general(words, flags, index_block)
+					name = from_index_to_span(words, target_block, (name_start_index, name_end_index))
+					print(f'[method:dragout]----分句主语为: {name}')
+					
+					gearup(flags, words, values, flags_plain, quadraples, index_block, value_block, name, True, name)
+					
+				if match_pattern_index_set=={3}: # 规则五：“值变动+值赋值（变动类的第二种）”
+					print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 击中正则 pat_change_value2（值变动2） -> {match_patterns_dict[3]}')
+					print(f'[method:dragout]----变动值为: {value_block}')
+					target_block, (name_start_index, name_end_index) = locate_subjectindex_general(words, flags, index_block)
+					name = from_index_to_span(words, target_block, (name_start_index, name_end_index))
+					print(f'[method:dragout]----分句主语为: {name}')
+					
+					gearup(flags, words, values, flags_plain, quadraples, index_block, value_block, name, True, name)
+					
+				if match_pattern_index_set=={6}: # 规则六：单值赋值
+					print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 击中正则 pat_single_value（单值） -> {match_patterns_dict[6]}')
+					print(f'[method:dragout]----单值为: {value_block}')
+					target_block, (name_start_index, name_end_index) = locate_subjectindex_general(words, flags, index_block)
+					name = from_index_to_span(words, target_block, (name_start_index, name_end_index))
+					print(f'[method:dragout]----单值主语为: {name}')
+					if sentence.split("，")[index_block].count('、') != 0:
+						print(f'[method:dragout]-----主语含有、号又未被多值特征击中，说明为枚举键值对')
+						sentences = sentence.split("，")
+						current_subsentence = sentence.split("，")[index_block]
+						parts = current_subsentence.split('、')
+						sentence = sentence.replace(current_subsentence, '，'.join(parts))
+						print(f'[method:dragout]----句子已改造为：{sentence}')
+						if quadraples != []:
+							quadraples = []
+						return extract(sentence)
+					
+					
+					if clean_subject(name) == value_block:
+						print(f'[method:dragout]-----主语需要倒置，{value_block}不可作为主语')
+						target_block, (name_start_index, name_end_index) = locate_subjectindex_general(words, flags, index_block, len(flags.split(' ')[index_block].split('|')))
+						name = from_index_to_span(words, target_block, (name_start_index, name_end_index))
+						print(f'[method:dragout]-----单值再次确认主语为: {name}')
+					
+					gearup(flags, words, values, flags_plain, quadraples, index_block, value_block, name, False)
+					
+				if match_pattern_index_set=={6, 7}: # 规则七： 多值，多主语， 转化为单值模式
+					print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 击中正则 pat_multi_subject_value（多值多主语） -> {match_patterns_dict[7]}')
+					print(f'[method:dragout]----多值为: {value_block}')
+					
 					sentences = sentence.split("，")
 					current_subsentence = sentence.split("，")[index_block]
 					parts = current_subsentence.split('、')
+					if '以及' in parts[-1]:
+						lat = parts[-1].split('以及',1)
+					elif '及' in parts[-1]:
+						lat = parts[-1].split('及',1)
+					elif '和' in parts[-1]:
+						lat = parts[-1].split('和',1)
+					parts.pop(-1)
+					parts.extend(lat)
+					parts = [p.replace(re.search(pat_value_word, p).group(), '为'+re.search(pat_value_word, p).group()) for p in parts ]
 					sentence = sentence.replace(current_subsentence, '，'.join(parts))
+					
 					print(f'[method:dragout]----句子已改造为：{sentence}')
 					if quadraples != []:
 						quadraples = []
 					return extract(sentence)
-				
-				
-				if clean_subject(name) == value_block:
-					print(f'[method:dragout]-----主语需要倒置，{value_block}不可作为主语')
-					target_block, (name_start_index, name_end_index) = locate_subjectindex_general(words, flags, index_block, len(flags.split(' ')[index_block].split('|')))
+					
+				if len(match_pattern_index_set)==0: # 规则八：有值域无特征，是对前述特征句子的补充，主语沿用最近的特征句子的主语
+					print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 无正则击中，为补充句式')
+					print(f'[method:dragout]----补充值为: {value_block}')
+					target_block, (name_start_index, name_end_index) = locate_subjectindex_general(words, flags, index_block)
 					name = from_index_to_span(words, target_block, (name_start_index, name_end_index))
-					print(f'[method:dragout]-----单值再次确认主语为: {name}')
-				
-				gearup(flags, words, values, flags_plain, quadraples, index_block, value_block, name, False)
-				
-			if match_pattern_index_set=={6, 7}: # 规则七： 多值，多主语， 转化为单值模式
-				print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 击中正则 pat_multi_subject_value（多值多主语） -> {match_patterns_dict[7]}')
-				print(f'[method:dragout]----多值为: {value_block}')
-				
-				sentences = sentence.split("，")
-				current_subsentence = sentence.split("，")[index_block]
-				parts = current_subsentence.split('、')
-				if '和' in parts[-1]:
-					lat = parts[-1].split('和',1)
-				elif '及' in parts[-1]:
-					lat = parts[-1].split('及',1)
-				elif '以及' in parts[-1]:
-					lat = parts[-1].split('以及',1)
-				parts.pop(-1)
-				parts.extend(lat)
-				parts = [p.replace(re.search(pat_value_word, p).group(), '为'+re.search(pat_value_word, p).group()) for p in parts ]
-				sentence = sentence.replace(current_subsentence, '，'.join(parts))
-				
-				print(f'[method:dragout]----句子已改造为：{sentence}')
-				if quadraples != []:
-					quadraples = []
-				return extract(sentence)
-				
-			if len(match_pattern_index_set)==0: # 规则八：有值域无特征，是对前述特征句子的补充，主语沿用最近的特征句子的主语
-				print(f'[method:dragout]----子句：{sentence.split("，")[index_block]} 无正则击中，为补充句式')
-				print(f'[method:dragout]----补充值为: {value_block}')
-				target_block, (name_start_index, name_end_index) = locate_subjectindex_general(words, flags, index_block)
-				name = from_index_to_span(words, target_block, (name_start_index, name_end_index))
-				print(f'[method:dragout]----补充句主语为: {name}')
-				
-				gearup(flags, words, values, flags_plain, quadraples, index_block, value_block, name, False, name)
-	
+					print(f'[method:dragout]----补充句主语为: {name}')
+					
+					gearup(flags, words, values, flags_plain, quadraples, index_block, value_block, name, False, name)
+			except:
+				print(f'[method:dragout]-----值域{value_block}出错，跳过')
+				continue
 	print('[method:dragout->end]')
 	return quadraples
 
